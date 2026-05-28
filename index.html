@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ごちゃまぜDJ mini シンプル現場版</title>
+<style>
+body{margin:0;padding:16px;font-family:Arial,"Hiragino Sans","Yu Gothic",sans-serif;background:#fff6d8;text-align:center;color:#222;}
+h1{font-size:36px;margin:18px 0 4px;}
+.subtitle{color:#444;margin-bottom:18px;}
+.panel{background:#fff;border:4px solid #222;border-radius:24px;padding:16px;margin:16px auto;max-width:900px;box-shadow:6px 6px 0 #222;}
+button{cursor:pointer;font-family:inherit;}
+.control-button{font-size:18px;font-weight:bold;padding:12px 18px;border-radius:14px;margin:6px;border:3px solid #222;background:#fff;box-shadow:3px 3px 0 #222;}
+.control-button:active{transform:translate(2px,2px);box-shadow:1px 1px 0 #222;}
+.pad-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;max-width:760px;margin:20px auto;}
+.pad{height:120px;border-radius:18px;font-size:24px;font-weight:bold;color:#222;border:4px solid #222;box-shadow:5px 5px 0 #222;}
+.pad:active{transform:scale(0.96);}
+.selected{outline:7px solid #ffd400;}
+.recording{background:#ff6666!important;color:#fff;}
+.ready{background:#ccff90!important;}
+.status{font-size:18px;min-height:30px;margin:12px 0;font-weight:bold;}
+.setting{font-size:16px;margin:10px 0;}
+select{font-size:17px;padding:8px;border:3px solid #222;border-radius:10px;background:#fff;}
+input[type="file"]{font-size:15px;margin:8px;}
+.hidden{display:none;}
+#pad1{background:#ff8a80;}#pad2{background:#ffd180;}#pad3{background:#ffff8d;}#pad4{background:#ccff90;}#pad5{background:#a7ffeb;}
+#pad6{background:#80d8ff;}#pad7{background:#82b1ff;}#pad8{background:#b388ff;}#pad9{background:#f8bbd0;}#pad10{background:#d7ccc8;}
+@media(max-width:700px){.pad-grid{grid-template-columns:repeat(2,1fr);}.pad{height:105px;font-size:22px;}}
+</style>
+</head>
+<body>
+<h1>🎛 ごちゃまぜDJ</h1>
+<div class="subtitle">ことばを録音して、パッドで鳴らそう！</div>
+
+<div class="panel">
+<h2>🎵 BGM</h2>
+<button class="control-button" id="bgmPlay">BGMスタート</button>
+<button class="control-button" id="bgmStop">BGMストップ</button><br>
+<input type="file" id="bgmFile" accept="audio/*">
+</div>
+
+<div class="panel">
+<h2>🎤 録音</h2>
+<button class="control-button" id="micReadyBtn">マイク準備</button><br>
+<button class="control-button" id="recordBtn">録音スタート</button>
+<button class="control-button" id="stopBtn">録音ストップ</button>
+
+<div class="setting">
+  無音カット：
+  <select id="cutLevel">
+    <option value="normal">ふつう</option>
+    <option value="strong" selected>強め</option>
+    <option value="veryStrong">かなり強め</option>
+  </select>
+</div>
+
+<div class="status" id="status">まず「マイク準備」を押してください</div>
+
+<button class="control-button hidden" id="loadDemo">おためし音声を入れる</button>
+</div>
+
+<div class="panel">
+<h2>🟩 パッド</h2>
+<div class="pad-grid">
+<button class="pad selected" id="pad1" data-pad="0">1</button>
+<button class="pad" id="pad2" data-pad="1">2</button>
+<button class="pad" id="pad3" data-pad="2">3</button>
+<button class="pad" id="pad4" data-pad="3">4</button>
+<button class="pad" id="pad5" data-pad="4">5</button>
+<button class="pad" id="pad6" data-pad="5">6</button>
+<button class="pad" id="pad7" data-pad="6">7</button>
+<button class="pad" id="pad8" data-pad="7">8</button>
+<button class="pad" id="pad9" data-pad="8">9</button>
+<button class="pad" id="pad10" data-pad="9">10</button>
+</div>
+<button class="control-button" id="clearOne">選んだパッドを消す</button>
+<button class="control-button" id="clearAll">ぜんぶ消す</button>
+</div>
+
+<audio id="bgmAudio" loop></audio>
+
+<script>
+(function(){
+var selectedPad=0, recorder=null, chunks=[], micStream=null;
+var padSounds=[null,null,null,null,null,null,null,null,null,null];
+var demoLabels=["ジョボジョボ","カレーいわ","ヌメヌメ","ひげカエル","バッキバキ","クレヨンてんぷら","ジャラジャラ","カピバラ","モチモチ","メガネざる"];
+
+var statusText=document.getElementById("status");
+var micReadyBtn=document.getElementById("micReadyBtn");
+var recordBtn=document.getElementById("recordBtn");
+var stopBtn=document.getElementById("stopBtn");
+var clearOne=document.getElementById("clearOne");
+var clearAll=document.getElementById("clearAll");
+var loadDemo=document.getElementById("loadDemo");
+var bgmFile=document.getElementById("bgmFile");
+var bgmAudio=document.getElementById("bgmAudio");
+var bgmPlay=document.getElementById("bgmPlay");
+var bgmStop=document.getElementById("bgmStop");
+var cutLevel=document.getElementById("cutLevel");
+var pads=document.getElementsByClassName("pad");
+
+function setStatus(text){statusText.innerHTML=text;}
+
+function updateSelection(){
+  for(var i=0;i<pads.length;i++){
+    pads[i].className = (i===selectedPad) ? "pad selected" : "pad";
+    pads[i].innerHTML = padSounds[i] ? "▶ "+(i+1) : (i+1);
+  }
+}
+
+function playTts(text){
+  if(!("speechSynthesis" in window)){
+    setStatus("この端末ではおためし音声を再生できません。");
+    return;
+  }
+  var u=new SpeechSynthesisUtterance(text);
+  u.lang="ja-JP";
+  u.rate=1.0;
+  u.pitch=1.0;
+  speechSynthesis.speak(u);
+}
+
+function playPad(index){
+  if(!padSounds[index]){
+    setStatus("パッド"+(index+1)+"を選びました");
+    return;
+  }
+  if(String(padSounds[index]).indexOf("tts:")===0){
+    playTts(String(padSounds[index]).replace("tts:",""));
+    return;
+  }
+  var audio=new Audio(padSounds[index]);
+  audio.currentTime=0;
+  audio.play();
+}
+
+for(var i=0;i<pads.length;i++){
+  pads[i].onclick=function(){
+    var index=Number(this.getAttribute("data-pad"));
+    selectedPad=index;
+    updateSelection();
+    playPad(index);
+  };
+}
+
+function audioBufferToWav(buffer){
+  var numChannels=buffer.numberOfChannels;
+  var sampleRate=buffer.sampleRate;
+  var length=buffer.length*numChannels*2+44;
+  var arrayBuffer=new ArrayBuffer(length);
+  var view=new DataView(arrayBuffer);
+  function writeString(offset,string){
+    for(var i=0;i<string.length;i++){view.setUint8(offset+i,string.charCodeAt(i));}
+  }
+  writeString(0,"RIFF");
+  view.setUint32(4,36+buffer.length*numChannels*2,true);
+  writeString(8,"WAVE");
+  writeString(12,"fmt ");
+  view.setUint32(16,16,true);
+  view.setUint16(20,1,true);
+  view.setUint16(22,numChannels,true);
+  view.setUint32(24,sampleRate,true);
+  view.setUint32(28,sampleRate*numChannels*2,true);
+  view.setUint16(32,numChannels*2,true);
+  view.setUint16(34,16,true);
+  writeString(36,"data");
+  view.setUint32(40,buffer.length*numChannels*2,true);
+  var offset=44;
+  for(var i=0;i<buffer.length;i++){
+    for(var ch=0;ch<numChannels;ch++){
+      var sample=buffer.getChannelData(ch)[i];
+      sample=Math.max(-1,Math.min(1,sample));
+      view.setInt16(offset, sample<0 ? sample*0x8000 : sample*0x7FFF, true);
+      offset+=2;
+    }
+  }
+  return new Blob([view],{type:"audio/wav"});
+}
+
+function getThreshold(){
+  if(cutLevel.value==="normal") return 0.025;
+  if(cutLevel.value==="strong") return 0.045;
+  return 0.075;
+}
+
+function trimSilence(buffer){
+  var threshold=getThreshold();
+  var paddingSec=0.06;
+  var sampleRate=buffer.sampleRate;
+  var padding=Math.floor(sampleRate*paddingSec);
+  var length=buffer.length;
+  var channels=buffer.numberOfChannels;
+  var start=0, end=length-1;
+  var windowSize=Math.max(1,Math.floor(sampleRate*0.02));
+
+  function windowLoudness(index){
+    var sum=0, count=0;
+    var maxEnd=Math.min(length,index+windowSize);
+    for(var i=index;i<maxEnd;i++){
+      for(var ch=0;ch<channels;ch++){
+        sum += Math.abs(buffer.getChannelData(ch)[i]);
+        count++;
+      }
+    }
+    return count ? sum/count : 0;
+  }
+
+  while(start<length && windowLoudness(start)<threshold){start+=windowSize;}
+  while(end>start && windowLoudness(Math.max(0,end-windowSize))<threshold){end-=windowSize;}
+  if(start>=end){return buffer;}
+
+  start=Math.max(0,start-padding);
+  end=Math.min(length-1,end+padding);
+
+  var newLength=end-start+1;
+  var AudioCtx=window.AudioContext||window.webkitAudioContext;
+  var audioCtx=new AudioCtx();
+  var trimmed=audioCtx.createBuffer(channels,newLength,sampleRate);
+  for(var ch=0;ch<channels;ch++){
+    var oldData=buffer.getChannelData(ch);
+    var newData=trimmed.getChannelData(ch);
+    for(var i=0;i<newLength;i++){newData[i]=oldData[start+i];}
+  }
+  return trimmed;
+}
+
+async function makeTrimmedUrl(blob){
+  try{
+    var arrayBuffer=await blob.arrayBuffer();
+    var AudioCtx=window.AudioContext||window.webkitAudioContext;
+    var audioCtx=new AudioCtx();
+    var decoded=await audioCtx.decodeAudioData(arrayBuffer);
+    var trimmed=trimSilence(decoded);
+    var wavBlob=audioBufferToWav(trimmed);
+    return URL.createObjectURL(wavBlob);
+  }catch(e){
+    return URL.createObjectURL(blob);
+  }
+}
+
+function showDemoFallback(){
+  loadDemo.className="control-button";
+  setStatus("録音がむずかしい時は、おためし音声で遊べます。");
+}
+
+loadDemo.onclick=function(){
+  for(var i=0;i<10;i++){
+    padSounds[i]="tts:"+demoLabels[i];
+  }
+  updateSelection();
+  setStatus("おためし音声を入れました。パッドを押してみてください。");
+};
+
+micReadyBtn.onclick=function(){
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder==="undefined"){
+    showDemoFallback();
+    return;
+  }
+  if(micStream){
+    setStatus("マイク準備OKです。録音できます。");
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({audio:true}).then(function(stream){
+    micStream=stream;
+    micReadyBtn.className="control-button ready";
+    setStatus("マイク準備OKです。録音できます。");
+  }).catch(function(){
+    showDemoFallback();
+  });
+};
+
+recordBtn.onclick=function(){
+  if(!micStream){
+    setStatus("先に「マイク準備」を押してください。");
+    return;
+  }
+  if(recorder && recorder.state==="recording"){return;}
+  chunks=[];
+  recorder=new MediaRecorder(micStream);
+  recorder.ondataavailable=function(e){
+    if(e.data && e.data.size>0){chunks.push(e.data);}
+  };
+  recorder.onstop=async function(){
+    setStatus("無音をカット中…");
+    var blob=new Blob(chunks,{type:"audio/webm"});
+    if(padSounds[selectedPad] && String(padSounds[selectedPad]).indexOf("blob:")===0){URL.revokeObjectURL(padSounds[selectedPad]);}
+    padSounds[selectedPad]=await makeTrimmedUrl(blob);
+    updateSelection();
+    setStatus("パッド"+(selectedPad+1)+"に録音しました！");
+  };
+  recorder.start();
+  recordBtn.className="control-button recording";
+  setStatus("録音中… パッド"+(selectedPad+1));
+};
+
+stopBtn.onclick=function(){
+  if(recorder && recorder.state==="recording"){
+    recorder.stop();
+    recordBtn.className="control-button";
+  }
+};
+
+bgmFile.onchange=function(){
+  var file=bgmFile.files[0];
+  if(!file) return;
+  bgmAudio.src=URL.createObjectURL(file);
+  setStatus("BGMを読み込みました");
+};
+
+bgmPlay.onclick=function(){
+  if(!bgmAudio.src){setStatus("BGM音源を選んでください");return;}
+  bgmAudio.play().then(function(){setStatus("BGM再生中");}).catch(function(){setStatus("BGMを再生できませんでした");});
+};
+
+bgmStop.onclick=function(){
+  bgmAudio.pause();
+  bgmAudio.currentTime=0;
+  setStatus("BGM停止");
+};
+
+clearOne.onclick=function(){
+  if(padSounds[selectedPad] && String(padSounds[selectedPad]).indexOf("blob:")===0){URL.revokeObjectURL(padSounds[selectedPad]);}
+  padSounds[selectedPad]=null;
+  updateSelection();
+  setStatus("パッド"+(selectedPad+1)+"を消しました");
+};
+
+clearAll.onclick=function(){
+  for(var i=0;i<padSounds.length;i++){
+    if(padSounds[i] && String(padSounds[i]).indexOf("blob:")===0){URL.revokeObjectURL(padSounds[i]);}
+    padSounds[i]=null;
+  }
+  updateSelection();
+  setStatus("ぜんぶ消しました");
+};
+
+window.addEventListener("beforeunload",function(){
+  if(micStream){
+    var tracks=micStream.getTracks();
+    for(var i=0;i<tracks.length;i++){tracks[i].stop();}
+  }
+});
+
+updateSelection();
+})();
+</script>
+</body>
+</html>
