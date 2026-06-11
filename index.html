@@ -35,7 +35,13 @@ input[type="file"]{font-size:15px;margin:8px;}
 <div class="panel">
 <h2>🎵 BGM</h2>
 <button class="control-button" id="bgmPlay">BGMスタート</button>
-<button class="control-button" id="bgmStop">BGMストップ</button><br>
+<button class="control-button" id="bgmStop">BGMストップ</button>
+
+<button class="control-button" id="sample1">サンプルBGM①</button>
+<button class="control-button" id="sample2">サンプルBGM②</button>
+<button class="control-button" id="sample3">サンプルBGM③</button>
+
+<br>
 <input type="file" id="bgmFile" accept="audio/*">
 </div>
 
@@ -306,7 +312,20 @@ bgmFile.onchange=function(){
   bgmAudio.src=URL.createObjectURL(file);
   setStatus("BGMを読み込みました");
 };
+document.getElementById("sample1").onclick=function(){
+  bgmAudio.src="サンプルBGM①ごちゃまぜラップ.mp3";
+  setStatus("サンプルBGM①を読み込みました");
+};
 
+document.getElementById("sample2").onclick=function(){
+  bgmAudio.src="サンプルBGM②ごちゃまぜラップ.mp3";
+  setStatus("サンプルBGM②を読み込みました");
+};
+
+document.getElementById("sample3").onclick=function(){
+  bgmAudio.src="サンプルBGM③ごちゃまぜラップ.mp3";
+  setStatus("サンプルBGM③を読み込みました");
+};
 bgmPlay.onclick=function(){
   if(!bgmAudio.src){setStatus("BGM音源を選んでください");return;}
   bgmAudio.play().then(function(){setStatus("BGM再生中");}).catch(function(){setStatus("BGMを再生できませんでした");});
